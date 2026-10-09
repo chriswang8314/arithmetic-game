@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Arithmetic Game</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Arithmetic">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#16181c" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1f2328;
+    --muted: #656d76;
+    --line: #d0d7de;
+    --field: #ffffff;
+    --key: #eef1f4;
+    --key-press: #d5dbe1;
+    --accent: #2f6fdb;
+    --accent-fg: #ffffff;
+    --error: #c62828;
+    --good: #1a7f37;
+    --safe-t: env(safe-area-inset-top, 0px);
+    --safe-b: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16181c; --fg: #e6e8eb; --muted: #9198a1; --line: #3a3f47;
+      --field: #1f2228; --key: #2a2e35; --key-press: #3b414a;
+      --accent: #5b8def; --accent-fg: #ffffff; --error: #ef6b6b; --good: #4ac26b;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #16181c; --fg: #e6e8eb; --muted: #9198a1; --line: #3a3f47;
+    --field: #1f2228; --key: #2a2e35; --key-press: #3b414a;
+    --accent: #5b8def; --accent-fg: #ffffff; --error: #ef6b6b; --good: #4ac26b;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); }
+  body {
+    color: var(--fg);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -webkit-text-size-adjust: 100%;
+    touch-action: manipulation;           /* no double-tap zoom */
+  }
+  [hidden] { display: none !important; }
+  main { max-width: 760px; margin: 0 auto; padding: calc(24px + var(--safe-t)) 16px calc(32px + var(--safe-b)); }
+  h1 { font-size: 28px; margin: 0 0 8px; }
+  p.lede { color: var(--muted); margin: 0 0 20px; }
+
+  /* ---------- Settings ---------- */
+  .op { padding: 14px 0; border-top: 1px solid var(--line); }
+  .op:last-of-type { border-bottom: 1px solid var(--line); }
+  .op > label { font-weight: 600; display: inline-flex; align-items: center; gap: 10px; cursor: pointer; min-height: 32px; }
+  .op input[type=checkbox] { width: 22px; height: 22px; margin: 0; accent-color: var(--accent); }
+  .range { margin: 6px 0 0 32px; color: var(--muted); display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .range input {
+    width: 64px; padding: 6px; color: var(--fg);
+    font: 16px/1.2 inherit;               /* >=16px stops iOS zoom-on-focus */
+    background: var(--field); border: 1px solid var(--line); border-radius: 6px; text-align: center;
+  }
+  .range .grp { white-space: nowrap; }
+  .op.off .range { opacity: .45; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 20px; }
+  select {
+    font: 16px inherit; color: var(--fg); background: var(--field);
+    border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px;
+  }
+  button {
+    font: inherit; font-weight: 600; cursor: pointer;
+    padding: 10px 22px; border-radius: 8px; border: 1px solid var(--accent);
+    background: var(--accent); color: var(--accent-fg);
+  }
+  button.secondary { background: transparent; color: var(--accent); }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .error { color: var(--error); min-height: 1.5em; margin-top: 12px; }
+  .hint { color: var(--muted); font-size: 14px; margin-top: 20px; }
+  .install { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  kbd { font: 12px ui-monospace, Menlo, monospace; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; }
+
+  /* ---------- Game ---------- */
+  #game {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column;
+    padding: calc(12px + var(--safe-t)) 16px calc(12px + var(--safe-b));
+    max-width: 760px; margin: 0 auto;
+    overscroll-behavior: none;
+    user-select: none; -webkit-user-select: none;
+  }
+  .bar { display: flex; justify-content: space-between; align-items: center; font-size: 18px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+  .bar b { font-variant-numeric: tabular-nums; }
+  .bar .low { color: var(--error); }
+  .bar .quit-btn { padding: 4px 12px; font-size: 14px; font-weight: 500; }
+  .stage { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; }
+  .problem {
+    display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 12px;
+    font-size: clamp(34px, 10vw, 52px); font-variant-numeric: tabular-nums;
+  }
+  #answer {
+    min-width: 3.4em; padding: 0 10px; text-align: center; line-height: 1.35;
+    background: var(--field); border: 1px solid var(--line); border-radius: 8px;
+  }
+  #answer:empty::after { content: "\200b"; }  /* keep height when empty */
+  #answer.focus { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); }
+
+  .keypad {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    width: 100%; max-width: 420px; margin: 0 auto;
+  }
+  .keypad button {
+    height: clamp(52px, 8.5vh, 72px);
+    font-size: 26px; font-weight: 500; padding: 0;
+    background: var(--key); color: var(--fg); border: none; border-radius: 10px;
+    font-variant-numeric: tabular-nums;
+  }
+  .keypad button.pressed { background: var(--key-press); }
+  .keypad button.fn { font-size: 20px; color: var(--muted); }
+  /* Physical-keyboard devices don't need the on-screen keypad. */
+  @media (hover: hover) and (pointer: fine) { .keypad { display: none; } }
+  .desk-hint { text-align: center; color: var(--muted); font-size: 14px; margin-bottom: 16px; }
+  @media not ((hover: hover) and (pointer: fine)) { .desk-hint { display: none; } }
+
+  /* ---------- End ---------- */
+  .final { font-size: 44px; font-weight: 700; margin: 16px 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .pb { color: var(--good); font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; margin-top: 28px; font-size: 14px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; }
+  td.num, th.num { text-align: right; }
+  .stats { display: flex; gap: 28px; flex-wrap: wrap; margin-top: 24px; }
+  .stat .k { color: var(--muted); font-size: 13px; }
+  .stat .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<main id="page">
+
+  <!-- ===== Settings ===== -->
+  <section id="settings">
+    <h1>Arithmetic Game</h1>
+    <p class="lede">A fast-paced speed drill. Answer as many problems as you can before the timer runs out. Correct answers advance automatically.</p>
+
+    <form id="settings-form" novalidate>
+      <div class="op" id="op-add">
+        <label><input type="checkbox" id="add"> Addition</label>
+        <div class="range">Range: <span class="grp">(<input type="text" inputmode="numeric" id="addL1"> to <input type="text" inputmode="numeric" id="addH1">)</span> + <span class="grp">(<input type="text" inputmode="numeric" id="addL2"> to <input type="text" inputmode="numeric" id="addH2">)</span></div>
+      </div>
+      <div class="op" id="op-sub">
+        <label><input type="checkbox" id="sub"> Subtraction</label>
+        <div class="range">Addition problems in reverse.</div>
+      </div>
+      <div class="op" id="op-mul">
+        <label><input type="checkbox" id="mul"> Multiplication</label>
+        <div class="range">Range: <span class="grp">(<input type="text" inputmode="numeric" id="mulL1"> to <input type="text" inputmode="numeric" id="mulH1">)</span> × <span class="grp">(<input type="text" inputmode="numeric" id="mulL2"> to <input type="text" inputmode="numeric" id="mulH2">)</span></div>
+      </div>
+      <div class="op" id="op-div">
+        <label><input type="checkbox" id="div"> Division</label>
+        <div class="range">Multiplication problems in reverse.</div>
+      </div>
+
+      <div class="row">
+        <label for="duration">Duration:</label>
+        <select id="duration">
+          <option value="30">30 seconds</option>
+          <option value="60">60 seconds</option>
+          <option value="120">120 seconds</option>
+          <option value="300">300 seconds</option>
+          <option value="600">600 seconds</option>
+        </select>
+      </div>
+      <div class="row">
+        <button type="submit">Start</button>
+        <button type="button" class="secondary" id="reset">Reset to defaults</button>
+      </div>
+      <div class="error" id="error" role="alert"></div>
+    </form>
+
+    <p class="hint install" id="install-hint" hidden>
+      <b>Install on iPhone:</b> tap the Share button in Safari, then <b>Add to Home Screen</b>. It then runs full-screen and works offline.
+    </p>
+    <p class="hint">Scores are stored on this device only.</p>
+  </section>
+
+  <!-- ===== End ===== -->
+  <section id="end" hidden>
+    <div class="final">Score: <span id="final"></span></div>
+    <p class="sub" id="end-sub"></p>
+    <div class="row">
+      <button id="again">Try again</button>
+      <button class="secondary" id="change">Change settings</button>
+    </div>
+    <div class="stats" id="stats"></div>
+    <table>
+      <thead><tr><th>#</th><th>Date</th><th class="num">Score</th></tr></thead>
+      <tbody id="history"></tbody>
+    </table>
+  </section>
+</main>
+
+<!-- ===== Game (full-screen overlay) ===== -->
+<section id="game" hidden>
+  <div class="bar">
+    <span>Seconds left: <b id="timer">120</b></span>
+    <button class="secondary quit-btn" id="quit" type="button">Quit</button>
+    <span>Score: <b id="score">0</b></span>
+  </div>
+  <div class="stage">
+    <div class="problem">
+      <span id="problem"></span>
+      <span>=</span>
+      <span id="answer" class="focus" role="textbox" aria-label="Answer" aria-live="off"></span>
+    </div>
+  </div>
+  <div class="desk-hint">Type your answer · <kbd>Esc</kbd> to quit</div>
+  <div class="keypad" id="keypad">
+    <button type="button" data-k="1">1</button>
+    <button type="button" data-k="2">2</button>
+    <button type="button" data-k="3">3</button>
+    <button type="button" data-k="4">4</button>
+    <button type="button" data-k="5">5</button>
+    <button type="button" data-k="6">6</button>
+    <button type="button" data-k="7">7</button>
+    <button type="button" data-k="8">8</button>
+    <button type="button" data-k="9">9</button>
+    <button type="button" data-k="-" class="fn" aria-label="Minus">−</button>
+    <button type="button" data-k="0">0</button>
+    <button type="button" data-k="del" class="fn" aria-label="Delete">⌫</button>
+  </div>
+</section>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+
+  const DEFAULTS = {
+    add: true, sub: true, mul: true, div: true,
+    addL1: 2, addH1: 100, addL2: 2, addH2: 100,
+    mulL1: 2, mulH1: 12, mulL2: 2, mulH2: 100,
+    duration: 120,
+  };
+  const OPS = ['add', 'sub', 'mul', 'div'];
+  const RANGES = ['addL1', 'addH1', 'addL2', 'addH2', 'mulL1', 'mulH1', 'mulL2', 'mulH2'];
+  const KEY_SETTINGS = 'arith.settings.v1';
+  const KEY_HISTORY = 'arith.history.v1';
+  const MAX_LEN = 7;
+
+  // ---------- storage (fails soft) ----------
+  const load = (k, fallback) => {
+    try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; }
+    catch { return fallback; }
+  };
+  const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+
+  // ---------- settings form ----------
+  function writeForm(s) {
+    OPS.forEach(op => { $(op).checked = !!s[op]; });
+    RANGES.forEach(r => { $(r).value = s[r]; });
+    $('duration').value = String(s.duration);
+    refreshDisabled();
+  }
+
+  function refreshDisabled() {
+    OPS.forEach(op => $('op-' + op).classList.toggle('off', !$(op).checked));
+  }
+
+  function readForm() {
+    const s = {};
+    OPS.forEach(op => { s[op] = $(op).checked; });
+    for (const r of RANGES) {
+      const raw = $(r).value.trim();
+      const v = Number(raw);
+      if (raw === '' || !Number.isInteger(v)) return { error: 'All range values must be whole numbers.' };
+      s[r] = v;
+    }
+    s.duration = Number($('duration').value);
+
+    if (!OPS.some(op => s[op])) return { error: 'Pick at least one operation.' };
+    if ((s.add || s.sub) && (s.addL1 > s.addH1 || s.addL2 > s.addH2))
+      return { error: 'Addition ranges: the lower bound must not exceed the upper bound.' };
+    if ((s.mul || s.div) && (s.mulL1 > s.mulH1 || s.mulL2 > s.mulH2))
+      return { error: 'Multiplication ranges: the lower bound must not exceed the upper bound.' };
+    if (s.div && s.mulL1 === 0 && s.mulH1 === 0)
+      return { error: 'Division needs a non-zero divisor: widen the first multiplication range.' };
+    return { s };
+  }
+
+  // A signature so scores are only compared against identical settings.
+  const signature = s =>
+    OPS.filter(op => s[op]).join('+') + '|' +
+    ((s.add || s.sub) ? `a${s.addL1}-${s.addH1},${s.addL2}-${s.addH2}` : '') + '|' +
+    ((s.mul || s.div) ? `m${s.mulL1}-${s.mulH1},${s.mulL2}-${s.mulH2}` : '') + '|' +
+    s.duration;
+
+  // ---------- problems ----------
+  const rand = (lo, hi) => lo + Math.floor(Math.random() * (hi - lo + 1));
+
+  function makeProblem(s) {
+    const ops = OPS.filter(op => s[op]);
+    const op = ops[Math.floor(Math.random() * ops.length)];
+    let a, b;
+    switch (op) {
+      case 'add':
+        a = rand(s.addL1, s.addH1); b = rand(s.addL2, s.addH2);
+        return { text: `${a} + ${b}`, ans: a + b };
+      case 'sub':
+        a = rand(s.addL1, s.addH1); b = rand(s.addL2, s.addH2);
+        return { text: `${a + b} – ${a}`, ans: b };
+      case 'mul':
+        a = rand(s.mulL1, s.mulH1); b = rand(s.mulL2, s.mulH2);
+        return { text: `${a} × ${b}`, ans: a * b };
+      case 'div':
+        do { a = rand(s.mulL1, s.mulH1); } while (a === 0);
+        b = rand(s.mulL2, s.mulH2);
+        return { text: `${a * b} ÷ ${a}`, ans: b };
+    }
+  }
+
+  // ---------- game ----------
+  let settings = null, problem = null, entry = '', score = 0, endAt = 0, tickId = 0, running = false;
+
+  function show(id) {
+    $('page').hidden = id === 'game';
+    $('game').hidden = id !== 'game';
+    $('settings').hidden = id !== 'settings';
+    $('end').hidden = id !== 'end';
+    window.scrollTo(0, 0);
+  }
+
+  function setEntry(v) {
+    entry = v;
+    $('answer').textContent = v;
+    if (running && v === String(problem.ans)) {
+      score++;
+      $('score').textContent = score;
+      nextProblem();
+    }
+  }
+
+  function press(k) {
+    if (!running) return;
+    if (k === 'del') setEntry(entry.slice(0, -1));
+    else if (k === '-') setEntry(entry.startsWith('-') ? entry.slice(1) : '-' + entry);
+    else if (entry.replace('-', '').length < MAX_LEN) setEntry(entry + k);
+  }
+
+  function nextProblem() {
+    let p;
+    do { p = makeProblem(settings); } while (problem && p.text === problem.text && Math.random() < 0.95);
+    problem = p;
+    $('problem').textContent = p.text;
+    entry = '';
+    $('answer').textContent = '';
+  }
+
+  function start() {
+    score = 0; problem = null; running = true;
+    $('score').textContent = '0';
+    $('timer').textContent = settings.duration;
+    $('timer').classList.remove('low');
+    if (document.activeElement) document.activeElement.blur();  // dismiss any iOS keyboard
+    show('game');
+    nextProblem();
+    endAt = performance.now() + settings.duration * 1000;
+    clearInterval(tickId);
+    tickId = setInterval(tick, 50);
+  }
+
+  function tick() {
+    const left = endAt - performance.now();
+    if (left <= 0) return finish();
+    const secs = Math.ceil(left / 1000);
+    $('timer').textContent = secs;
+    $('timer').classList.toggle('low', secs <= 10);
+  }
+
+  function stop() {
+    running = false;
+    clearInterval(tickId);
+  }
+
+  function quit() {
+    stop();
+    show('settings');
+  }
+
+  function finish() {
+    stop();
+    const sig = signature(settings);
+    const now = Date.now();
+    const history = load(KEY_HISTORY, []);
+    const prior = history.filter(h => h.sig === sig);
+    const prevBest = prior.reduce((m, h) => Math.max(m, h.score), -1);
+    history.push({ sig, score, t: now });
+    save(KEY_HISTORY, history.slice(-2000));
+
+    const mine = [...prior, { sig, score, t: now }];
+    $('final').textContent = score;
+    const rate = (score / settings.duration * 60).toFixed(1);
+    $('end-sub').textContent = `${rate} problems per minute over ${settings.duration}s.`;
+    if (prior.length && score > prevBest) {
+      const pb = document.createElement('span');
+      pb.className = 'pb';
+      pb.textContent = `  New best! (previous ${prevBest})`;
+      $('end-sub').append(pb);
+    }
+
+    const best = Math.max(...mine.map(h => h.score));
+    const last10 = mine.slice(-10);
+    const avg10 = last10.reduce((a, h) => a + h.score, 0) / last10.length;
+    $('stats').replaceChildren(...[['Best', best], ['Avg (last 10)', avg10.toFixed(1)], ['Games played', mine.length]]
+      .map(([k, v]) => {
+        const d = document.createElement('div');
+        d.className = 'stat';
+        const kd = document.createElement('div'); kd.className = 'k'; kd.textContent = k;
+        const vd = document.createElement('div'); vd.className = 'v'; vd.textContent = v;
+        d.append(kd, vd);
+        return d;
+      }));
+
+    $('history').replaceChildren(...mine.slice(-15).reverse().map((h, i) => {
+      const tr = document.createElement('tr');
+      const date = new Date(h.t).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+      [mine.length - i, date, h.score].forEach((v, j) => {
+        const td = document.createElement('td');
+        td.textContent = v;
+        if (j === 2) td.className = 'num';
+        tr.append(td);
+      });
+      return tr;
+    }));
+
+    show('end');
+  }
+
+  // ---------- events ----------
+  // On-screen keypad: act on pointerdown for zero-latency taps; ignore the follow-up click.
+  $('keypad').addEventListener('pointerdown', e => {
+    const btn = e.target.closest('button[data-k]');
+    if (!btn) return;
+    e.preventDefault();
+    btn.classList.add('pressed');
+    press(btn.dataset.k);
+  });
+  const unpress = () => $('keypad').querySelectorAll('.pressed').forEach(b => b.classList.remove('pressed'));
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => $('keypad').addEventListener(t, unpress));
+  // Stop iOS long-press magnifier / callout on the game screen.
+  $('game').addEventListener('contextmenu', e => e.preventDefault());
+
+  // Physical keyboard (Mac, iPad keyboard, Bluetooth keyboard).
+  document.addEventListener('keydown', e => {
+    if (!running || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (/^[0-9]$/.test(e.key)) press(e.key);
+    else if (e.key === '-') press('-');
+    else if (e.key === 'Backspace') press('del');
+    else if (e.key === 'Escape') quit();
+    else return;
+    e.preventDefault();
+  });
+
+  $('quit').addEventListener('click', quit);
+
+  $('settings-form').addEventListener('change', () => {
+    refreshDisabled();
+    const { s } = readForm();
+    if (s) save(KEY_SETTINGS, s);
+  });
+
+  $('settings-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const { s, error } = readForm();
+    $('error').textContent = error || '';
+    if (error) return;
+    settings = s;
+    save(KEY_SETTINGS, s);
+    start();
+  });
+
+  $('reset').addEventListener('click', () => {
+    writeForm(DEFAULTS);
+    save(KEY_SETTINGS, DEFAULTS);
+    $('error').textContent = '';
+  });
+
+  $('again').addEventListener('click', start);
+  $('change').addEventListener('click', () => show('settings'));
+
+  // ---------- init ----------
+  writeForm({ ...DEFAULTS, ...load(KEY_SETTINGS, {}) });
+  show('settings');
+
+  const isIOS = /iP(hone|od|ad)/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const standalone = navigator.standalone || matchMedia('(display-mode: standalone)').matches;
+  $('install-hint').hidden = !(isIOS && !standalone);
+
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+})();
+</script>
+</body>
+</html>
