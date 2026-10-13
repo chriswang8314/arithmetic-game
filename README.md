@@ -10,3 +10,5 @@ An offline arithmetic speed drill in the style of Zetamac, built as an installab
 - Best / average / history per settings combination, stored on-device
 
 When changing any file, bump `VERSION` in `sw.js` so installed copies update.
+
+Live at: https://chriswang8314.github.io/arithmetic-game/
