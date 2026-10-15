@@ -58,7 +58,9 @@
 
   /* ---------- Settings ---------- */
   .op { padding: 14px 0; border-top: 1px solid var(--line); }
-  .op:last-of-type { border-bottom: 1px solid var(--line); }
+  .ops { margin-top: 0; }
+  .ops + .ops { margin-top: 20px; }
+  .ops .op:last-child { border-bottom: 1px solid var(--line); }
   .op > label { font-weight: 600; display: inline-flex; align-items: center; gap: 10px; cursor: pointer; min-height: 32px; }
   .op input[type=checkbox] { width: 22px; height: 22px; margin: 0; accent-color: var(--accent); }
   .range { margin: 6px 0 0 32px; color: var(--muted); display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
@@ -69,6 +71,7 @@
   }
   .range .grp { white-space: nowrap; }
   .op.off .range { opacity: .45; }
+  .op .desc { margin: 4px 0 0 32px; color: var(--muted); font-size: 15px; }
   .row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 20px; }
   select {
     font: 16px inherit; color: var(--fg); background: var(--field);
@@ -125,6 +128,13 @@
   .keypad button.fn { font-size: 20px; color: var(--muted); }
   /* Physical-keyboard devices don't need the on-screen keypad. */
   @media (hover: hover) and (pointer: fine) { .keypad { display: none; } }
+  .submit-bar {
+    display: block; width: 100%; max-width: 420px; margin: 10px auto 0;
+    height: clamp(56px, 9vh, 76px); font-size: 22px; border-radius: 12px;
+  }
+  .submit-bar.pressed { filter: brightness(.88); }
+  #answer.wrong { border-color: var(--error); color: var(--error); animation: shake .28s; }
+  @keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
   .desk-hint { text-align: center; color: var(--muted); font-size: 14px; margin-bottom: 16px; }
   @media not ((hover: hover) and (pointer: fine)) { .desk-hint { display: none; } }
 
@@ -139,6 +149,11 @@
   .stats { display: flex; gap: 28px; flex-wrap: wrap; margin-top: 24px; }
   .stat .k { color: var(--muted); font-size: 13px; }
   .stat .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  td .acc { color: var(--muted); font-size: 12px; margin-left: 6px; }
+  td.set { color: var(--muted); }
+  .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .head h1 { margin: 0; }
+  .empty { color: var(--muted); margin-top: 24px; }
 </style>
 </head>
 <body>
@@ -147,9 +162,10 @@
   <!-- ===== Settings ===== -->
   <section id="settings">
     <h1>Arithmetic Game</h1>
-    <p class="lede">A fast-paced speed drill. Answer as many problems as you can before the timer runs out. Correct answers advance automatically.</p>
+    <p class="lede">A fast-paced speed drill. Answer as many problems as you can before the timer runs out. Correct answers advance automatically, or turn on Accuracy mode to submit each answer yourself.</p>
 
     <form id="settings-form" novalidate>
+      <div class="ops">
       <div class="op" id="op-add">
         <label><input type="checkbox" id="add"> Addition</label>
         <div class="range">Range: <span class="grp">(<input type="text" inputmode="numeric" id="addL1"> to <input type="text" inputmode="numeric" id="addH1">)</span> + <span class="grp">(<input type="text" inputmode="numeric" id="addL2"> to <input type="text" inputmode="numeric" id="addH2">)</span></div>
@@ -166,6 +182,14 @@
         <label><input type="checkbox" id="div"> Division</label>
         <div class="range">Multiplication problems in reverse.</div>
       </div>
+      </div>
+
+      <div class="ops">
+        <div class="op" id="op-accuracy">
+          <label><input type="checkbox" id="accuracy"> Accuracy mode</label>
+          <div class="desc">Answers are only checked when you press Submit. Right: +1 point. Wrong: −1 point, and you retry until you get it.</div>
+        </div>
+      </div>
 
       <div class="row">
         <label for="duration">Duration:</label>
@@ -179,6 +203,7 @@
       </div>
       <div class="row">
         <button type="submit">Start</button>
+        <button type="button" class="secondary" id="open-history">History</button>
         <button type="button" class="secondary" id="reset">Reset to defaults</button>
       </div>
       <div class="error" id="error" role="alert"></div>
@@ -197,12 +222,31 @@
     <div class="row">
       <button id="again">Try again</button>
       <button class="secondary" id="change">Change settings</button>
+      <button class="secondary" id="end-history">All history</button>
     </div>
     <div class="stats" id="stats"></div>
     <table>
-      <thead><tr><th>#</th><th>Date</th><th class="num">Score</th></tr></thead>
+      <thead><tr><th>Date</th><th class="num">Score</th></tr></thead>
       <tbody id="history"></tbody>
     </table>
+  </section>
+
+  <!-- ===== History ===== -->
+  <section id="hist" hidden>
+    <div class="head">
+      <h1>History</h1>
+      <button class="secondary" id="hist-back" type="button">Back</button>
+    </div>
+    <div class="row">
+      <label for="hist-filter">Show:</label>
+      <select id="hist-filter"></select>
+    </div>
+    <div class="stats" id="hist-stats"></div>
+    <table id="hist-table">
+      <thead><tr><th>Date</th><th id="hist-set-col">Settings</th><th class="num">Score</th></tr></thead>
+      <tbody id="hist-body"></tbody>
+    </table>
+    <p class="empty" id="hist-empty" hidden>No games played yet.</p>
   </section>
 </main>
 
@@ -220,7 +264,7 @@
       <span id="answer" class="focus" role="textbox" aria-label="Answer" aria-live="off"></span>
     </div>
   </div>
-  <div class="desk-hint">Type your answer · <kbd>Esc</kbd> to quit</div>
+  <div class="desk-hint" id="desk-hint">Type your answer · <kbd>Esc</kbd> to quit</div>
   <div class="keypad" id="keypad">
     <button type="button" data-k="1">1</button>
     <button type="button" data-k="2">2</button>
@@ -235,6 +279,7 @@
     <button type="button" data-k="0">0</button>
     <button type="button" data-k="del" class="fn" aria-label="Delete">⌫</button>
   </div>
+  <button type="button" class="submit-bar" id="submit-bar" hidden>Submit</button>
 </section>
 
 <script>
@@ -246,9 +291,11 @@
     addL1: 2, addH1: 100, addL2: 2, addH2: 100,
     mulL1: 2, mulH1: 12, mulL2: 2, mulH2: 100,
     duration: 120,
+    accuracy: false,
   };
   const OPS = ['add', 'sub', 'mul', 'div'];
   const RANGES = ['addL1', 'addH1', 'addL2', 'addH2', 'mulL1', 'mulH1', 'mulL2', 'mulH2'];
+  const DURATIONS = ['30', '60', '120', '300', '600'];
   const KEY_SETTINGS = 'arith.settings.v1';
   const KEY_HISTORY = 'arith.history.v1';
   const MAX_LEN = 7;
@@ -261,12 +308,25 @@
   const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 
   // ---------- settings form ----------
+  // The form is saved exactly as shown (even half-typed values) on every edit,
+  // so reopening the app always restores the last state of the screen.
   function writeForm(s) {
     OPS.forEach(op => { $(op).checked = !!s[op]; });
-    RANGES.forEach(r => { $(r).value = s[r]; });
-    $('duration').value = String(s.duration);
+    RANGES.forEach(r => { $(r).value = s[r] ?? DEFAULTS[r]; });
+    $('duration').value = DURATIONS.includes(String(s.duration)) ? String(s.duration) : String(DEFAULTS.duration);
+    $('accuracy').checked = !!s.accuracy;
     refreshDisabled();
   }
+
+  function rawForm() {
+    const r = {};
+    OPS.forEach(op => { r[op] = $(op).checked; });
+    RANGES.forEach(k => { r[k] = $(k).value; });
+    r.duration = $('duration').value;
+    r.accuracy = $('accuracy').checked;
+    return r;
+  }
+  const persistForm = () => save(KEY_SETTINGS, rawForm());
 
   function refreshDisabled() {
     OPS.forEach(op => $('op-' + op).classList.toggle('off', !$(op).checked));
@@ -282,6 +342,7 @@
       s[r] = v;
     }
     s.duration = Number($('duration').value);
+    s.accuracy = $('accuracy').checked;
 
     if (!OPS.some(op => s[op])) return { error: 'Pick at least one operation.' };
     if ((s.add || s.sub) && (s.addL1 > s.addH1 || s.addL2 > s.addH2))
@@ -294,11 +355,28 @@
   }
 
   // A signature so scores are only compared against identical settings.
+  // Accuracy mode gets its own suffix so its scores are kept separate.
   const signature = s =>
     OPS.filter(op => s[op]).join('+') + '|' +
     ((s.add || s.sub) ? `a${s.addL1}-${s.addH1},${s.addL2}-${s.addH2}` : '') + '|' +
     ((s.mul || s.div) ? `m${s.mulL1}-${s.mulH1},${s.mulL2}-${s.mulH2}` : '') + '|' +
-    s.duration;
+    s.duration + (s.accuracy ? '|acc' : '');
+
+  // Human-readable label for a signature, e.g. "+ − × ÷ · 120s · Accuracy".
+  function describe(sig) {
+    const [ops, a, m, dur, mode] = sig.split('|');
+    const sym = { add: '+', sub: '−', mul: '×', div: '÷' };
+    const parts = [ops.split('+').map(o => sym[o]).join(' ')];
+    const fmt = (str, op) => {
+      const x = str.slice(1).match(/^(-?\d+)-(-?\d+),(-?\d+)-(-?\d+)$/);
+      return x ? `(${x[1]}–${x[2]}) ${op} (${x[3]}–${x[4]})` : str;
+    };
+    if (a && a !== 'a2-100,2-100') parts.push(fmt(a, '+'));
+    if (m && m !== 'm2-12,2-100') parts.push(fmt(m, '×'));
+    parts.push(dur + 's');
+    if (mode === 'acc') parts.push('Accuracy');
+    return parts.join(' · ');
+  }
 
   // ---------- problems ----------
   const rand = (lo, hi) => lo + Math.floor(Math.random() * (hi - lo + 1));
@@ -325,31 +403,52 @@
   }
 
   // ---------- game ----------
-  let settings = null, problem = null, entry = '', score = 0, endAt = 0, tickId = 0, running = false;
+  let settings = null, problem = null, entry = '', score = 0, correct = 0, wrong = 0;
+  let wrongShown = false, endAt = 0, tickId = 0, running = false;
 
   function show(id) {
     $('page').hidden = id === 'game';
     $('game').hidden = id !== 'game';
-    $('settings').hidden = id !== 'settings';
-    $('end').hidden = id !== 'end';
+    ['settings', 'end', 'hist'].forEach(x => { $(x).hidden = x !== id; });
     window.scrollTo(0, 0);
   }
 
   function setEntry(v) {
     entry = v;
     $('answer').textContent = v;
-    if (running && v === String(problem.ans)) {
-      score++;
-      $('score').textContent = score;
-      nextProblem();
-    }
+    if (running && !settings.accuracy && v === String(problem.ans)) award();
+  }
+
+  function award() {
+    correct++; score++;
+    $('score').textContent = score;
+    nextProblem();
   }
 
   function press(k) {
     if (!running) return;
+    if (wrongShown) {
+      // First key after a wrong submission starts a fresh attempt.
+      wrongShown = false;
+      $('answer').classList.remove('wrong');
+      entry = '';
+      if (k === 'del') return setEntry('');
+    }
     if (k === 'del') setEntry(entry.slice(0, -1));
     else if (k === '-') setEntry(entry.startsWith('-') ? entry.slice(1) : '-' + entry);
     else if (entry.replace('-', '').length < MAX_LEN) setEntry(entry + k);
+  }
+
+  function submit() {
+    if (!running || !settings.accuracy || wrongShown || entry === '' || entry === '-') return;
+    if (entry === String(problem.ans)) return award();
+    wrong++; score--;
+    $('score').textContent = score;
+    wrongShown = true;
+    const a = $('answer');
+    a.classList.remove('wrong');
+    void a.offsetWidth;            // restart the shake animation
+    a.classList.add('wrong');
   }
 
   function nextProblem() {
@@ -358,14 +457,20 @@
     problem = p;
     $('problem').textContent = p.text;
     entry = '';
+    wrongShown = false;
+    $('answer').classList.remove('wrong');
     $('answer').textContent = '';
   }
 
   function start() {
-    score = 0; problem = null; running = true;
+    score = 0; correct = 0; wrong = 0; problem = null; running = true;
     $('score').textContent = '0';
     $('timer').textContent = settings.duration;
     $('timer').classList.remove('low');
+    $('submit-bar').hidden = !settings.accuracy;
+    $('desk-hint').innerHTML = settings.accuracy
+      ? 'Type your answer · <kbd>Enter</kbd> to submit · <kbd>Esc</kbd> to quit'
+      : 'Type your answer · <kbd>Esc</kbd> to quit';
     if (document.activeElement) document.activeElement.blur();  // dismiss any iOS keyboard
     show('game');
     nextProblem();
@@ -392,20 +497,73 @@
     show('settings');
   }
 
+  // ---------- history rendering ----------
+  const pct = (c, w) => (c + w ? Math.round(100 * c / (c + w)) : 100);
+
+  function renderStats(el, list) {
+    const best = Math.max(...list.map(h => h.score));
+    const last10 = list.slice(-10);
+    const avg10 = last10.reduce((a, h) => a + h.score, 0) / last10.length;
+    const items = [['Best', best], ['Avg (last 10)', avg10.toFixed(1)], ['Games played', list.length]];
+    const accGames = last10.filter(h => h.acc);
+    if (accGames.length) {
+      const c = accGames.reduce((a, h) => a + h.c, 0), w = accGames.reduce((a, h) => a + h.w, 0);
+      items.push(['Accuracy (last 10)', pct(c, w) + '%']);
+    }
+    el.replaceChildren(...items.map(([k, v]) => {
+      const d = document.createElement('div');
+      d.className = 'stat';
+      const kd = document.createElement('div'); kd.className = 'k'; kd.textContent = k;
+      const vd = document.createElement('div'); vd.className = 'v'; vd.textContent = v;
+      d.append(kd, vd);
+      return d;
+    }));
+  }
+
+  function renderRows(tbody, list, withSettings, limit) {
+    tbody.replaceChildren(...list.slice(-limit).reverse().map(h => {
+      const tr = document.createElement('tr');
+      const date = document.createElement('td');
+      date.textContent = new Date(h.t).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+      tr.append(date);
+      if (withSettings) {
+        const set = document.createElement('td');
+        set.className = 'set';
+        set.textContent = describe(h.sig);
+        tr.append(set);
+      }
+      const sc = document.createElement('td');
+      sc.className = 'num';
+      sc.textContent = h.score;
+      if (h.acc) {
+        const a = document.createElement('span');
+        a.className = 'acc';
+        a.textContent = pct(h.c, h.w) + '%';
+        sc.append(a);
+      }
+      tr.append(sc);
+      return tr;
+    }));
+  }
+
   function finish() {
     stop();
     const sig = signature(settings);
     const now = Date.now();
     const history = load(KEY_HISTORY, []);
     const prior = history.filter(h => h.sig === sig);
-    const prevBest = prior.reduce((m, h) => Math.max(m, h.score), -1);
-    history.push({ sig, score, t: now });
+    const prevBest = prior.reduce((m, h) => Math.max(m, h.score), -Infinity);
+    const entryRec = settings.accuracy
+      ? { sig, score, t: now, acc: true, c: correct, w: wrong }
+      : { sig, score, t: now };
+    history.push(entryRec);
     save(KEY_HISTORY, history.slice(-2000));
 
-    const mine = [...prior, { sig, score, t: now }];
+    const mine = [...prior, entryRec];
     $('final').textContent = score;
-    const rate = (score / settings.duration * 60).toFixed(1);
-    $('end-sub').textContent = `${rate} problems per minute over ${settings.duration}s.`;
+    $('end-sub').textContent = settings.accuracy
+      ? `${correct} correct · ${wrong} wrong · ${pct(correct, wrong)}% accuracy over ${settings.duration}s.`
+      : `${(score / settings.duration * 60).toFixed(1)} problems per minute over ${settings.duration}s.`;
     if (prior.length && score > prevBest) {
       const pb = document.createElement('span');
       pb.className = 'pb';
@@ -413,32 +571,42 @@
       $('end-sub').append(pb);
     }
 
-    const best = Math.max(...mine.map(h => h.score));
-    const last10 = mine.slice(-10);
-    const avg10 = last10.reduce((a, h) => a + h.score, 0) / last10.length;
-    $('stats').replaceChildren(...[['Best', best], ['Avg (last 10)', avg10.toFixed(1)], ['Games played', mine.length]]
-      .map(([k, v]) => {
-        const d = document.createElement('div');
-        d.className = 'stat';
-        const kd = document.createElement('div'); kd.className = 'k'; kd.textContent = k;
-        const vd = document.createElement('div'); vd.className = 'v'; vd.textContent = v;
-        d.append(kd, vd);
-        return d;
-      }));
-
-    $('history').replaceChildren(...mine.slice(-15).reverse().map((h, i) => {
-      const tr = document.createElement('tr');
-      const date = new Date(h.t).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-      [mine.length - i, date, h.score].forEach((v, j) => {
-        const td = document.createElement('td');
-        td.textContent = v;
-        if (j === 2) td.className = 'num';
-        tr.append(td);
-      });
-      return tr;
-    }));
-
+    renderStats($('stats'), mine);
+    renderRows($('history'), mine, false, 15);
     show('end');
+  }
+
+  function openHistory(backTo) {
+    const history = load(KEY_HISTORY, []);
+    const filter = $('hist-filter');
+    // One option per settings combination, most recently played first.
+    const sigs = [...new Set(history.map(h => h.sig).reverse())];
+    const counts = {};
+    history.forEach(h => { counts[h.sig] = (counts[h.sig] || 0) + 1; });
+    filter.replaceChildren(new Option(`All games (${history.length})`, '*'),
+      ...sigs.map(sig => new Option(`${describe(sig)} (${counts[sig]})`, sig)));
+    const { s } = readForm();
+    const current = s && signature(s);
+    filter.value = current && counts[current] ? current : '*';
+    $('hist-back').dataset.to = backTo;
+    renderHistory();
+    show('hist');
+  }
+
+  function renderHistory() {
+    const history = load(KEY_HISTORY, []);
+    const sig = $('hist-filter').value;
+    const list = sig === '*' ? history : history.filter(h => h.sig === sig);
+    const empty = list.length === 0;
+    $('hist-empty').hidden = !empty;
+    $('hist-table').hidden = empty;
+    $('hist-stats').hidden = empty;
+    $('hist-filter').parentElement.hidden = empty;
+    if (empty) return;
+    const all = sig === '*';
+    $('hist-set-col').hidden = !all;
+    renderStats($('hist-stats'), list);
+    renderRows($('hist-body'), list, all, 300);
   }
 
   // ---------- events ----------
@@ -450,8 +618,16 @@
     btn.classList.add('pressed');
     press(btn.dataset.k);
   });
-  const unpress = () => $('keypad').querySelectorAll('.pressed').forEach(b => b.classList.remove('pressed'));
-  ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => $('keypad').addEventListener(t, unpress));
+  $('submit-bar').addEventListener('pointerdown', e => {
+    e.preventDefault();
+    $('submit-bar').classList.add('pressed');
+    submit();
+  });
+  const unpress = () => $('game').querySelectorAll('.pressed').forEach(b => b.classList.remove('pressed'));
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(t => {
+    $('keypad').addEventListener(t, unpress);
+    $('submit-bar').addEventListener(t, unpress);
+  });
   // Stop iOS long-press magnifier / callout on the game screen.
   $('game').addEventListener('contextmenu', e => e.preventDefault());
 
@@ -461,6 +637,7 @@
     if (/^[0-9]$/.test(e.key)) press(e.key);
     else if (e.key === '-') press('-');
     else if (e.key === 'Backspace') press('del');
+    else if (e.key === 'Enter') submit();
     else if (e.key === 'Escape') quit();
     else return;
     e.preventDefault();
@@ -468,30 +645,32 @@
 
   $('quit').addEventListener('click', quit);
 
-  $('settings-form').addEventListener('change', () => {
-    refreshDisabled();
-    const { s } = readForm();
-    if (s) save(KEY_SETTINGS, s);
-  });
+  $('settings-form').addEventListener('input', persistForm);
+  $('settings-form').addEventListener('change', () => { refreshDisabled(); persistForm(); });
+  document.addEventListener('visibilitychange', () => { if (!$('settings').hidden) persistForm(); });
 
   $('settings-form').addEventListener('submit', e => {
     e.preventDefault();
+    persistForm();
     const { s, error } = readForm();
     $('error').textContent = error || '';
     if (error) return;
     settings = s;
-    save(KEY_SETTINGS, s);
     start();
   });
 
   $('reset').addEventListener('click', () => {
     writeForm(DEFAULTS);
-    save(KEY_SETTINGS, DEFAULTS);
+    persistForm();
     $('error').textContent = '';
   });
 
   $('again').addEventListener('click', start);
   $('change').addEventListener('click', () => show('settings'));
+  $('open-history').addEventListener('click', () => openHistory('settings'));
+  $('end-history').addEventListener('click', () => openHistory('end'));
+  $('hist-back').addEventListener('click', e => show(e.currentTarget.dataset.to || 'settings'));
+  $('hist-filter').addEventListener('change', renderHistory);
 
   // ---------- init ----------
   writeForm({ ...DEFAULTS, ...load(KEY_SETTINGS, {}) });
