@@ -1,6 +1,6 @@
 // Offline cache for the Arithmetic Game. Bump VERSION whenever any app file changes
 // so installed copies pick up the new files on their next launch.
-const VERSION = 'v3';
+const VERSION = 'v4';
 const CACHE = `arith-${VERSION}`;
 const FILES = [
   './',

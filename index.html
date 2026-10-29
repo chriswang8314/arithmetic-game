@@ -72,6 +72,16 @@
   .range .grp { white-space: nowrap; }
   .op.off .range { opacity: .45; }
   .op .desc { margin: 4px 0 0 32px; color: var(--muted); font-size: 15px; }
+  .op .desc.flush { margin-left: 0; }
+  .op .ptitle { font-weight: 600; }
+  .seg { display: flex; gap: 4px; padding: 4px; margin: 0 0 18px; border: 1px solid var(--line); border-radius: 10px; }
+  .seg label {
+    flex: 1; text-align: center; padding: 8px 6px; border-radius: 7px; cursor: pointer;
+    font-weight: 600; color: var(--muted); line-height: 1.25;
+  }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg label:has(input:checked) { background: var(--accent); color: var(--accent-fg); }
+  .seg label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
   .row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 20px; }
   select {
     font: 16px inherit; color: var(--fg); background: var(--field);
@@ -135,6 +145,26 @@
   .submit-bar.pressed { filter: brightness(.88); }
   #answer.wrong { border-color: var(--error); color: var(--error); animation: shake .28s; }
   @keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+  .pq { font-size: clamp(30px, 9vw, 48px); font-variant-numeric: tabular-nums; text-align: center; padding: 0 4px; }
+  .choices {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    width: 100%; max-width: 520px; margin: 0 auto;
+  }
+  .choices button {
+    position: relative; height: clamp(64px, 12vh, 96px); padding: 0 8px;
+    font-size: clamp(20px, 6vw, 28px); font-weight: 500; font-variant-numeric: tabular-nums;
+    background: var(--key); color: var(--fg); border: none; border-radius: 12px;
+  }
+  .choices button:active { background: var(--key-press); }
+  .choices .k { position: absolute; top: 6px; left: 10px; font-size: 12px; color: var(--muted); font-weight: 600; }
+  .skip-bar { display: block; width: 100%; max-width: 520px; margin: 10px auto 0; height: 52px; }
+  .verdict { font-weight: 600; }
+  .verdict.good { color: var(--good); }
+  .verdict.bad { color: var(--error); }
+  .review { margin-top: 28px; }
+  .review h2 { font-size: 18px; margin: 0 0 8px; }
+  .review td.q { font-variant-numeric: tabular-nums; }
+  .review .yours { color: var(--error); }
   .desk-hint { text-align: center; color: var(--muted); font-size: 14px; margin-bottom: 16px; }
   @media not ((hover: hover) and (pointer: fine)) { .desk-hint { display: none; } }
 
@@ -162,9 +192,15 @@
   <!-- ===== Settings ===== -->
   <section id="settings">
     <h1>Arithmetic Game</h1>
-    <p class="lede">A fast-paced speed drill. Answer as many problems as you can before the timer runs out. Correct answers advance automatically, or turn on Accuracy mode to submit each answer yourself.</p>
+    <p class="lede">A fast-paced mental arithmetic drill. Classic is a Zetamac-style sprint; Practical is modelled on Optiver's 80 in 8 test.</p>
 
     <form id="settings-form" novalidate>
+      <div class="seg" role="radiogroup" aria-label="Game mode">
+        <label><input type="radio" name="mode" value="classic"> Classic</label>
+        <label><input type="radio" name="mode" value="practical"> Practical (80 in 8)</label>
+      </div>
+
+      <div id="classic-settings">
       <div class="ops">
       <div class="op" id="op-add">
         <label><input type="checkbox" id="add"> Addition</label>
@@ -201,6 +237,25 @@
           <option value="600">600 seconds</option>
         </select>
       </div>
+      </div>
+
+      <div id="practical-settings" hidden>
+        <div class="ops">
+          <div class="op">
+            <div class="ptitle">80 questions · 8 minutes · 4 choices</div>
+            <div class="desc flush">Whole numbers, decimals, fractions and percentages, some with a missing operand (e.g. 66 × ? = 138.6). Right: +1. Wrong: −1. Picking an answer moves on immediately, with no going back and no feedback until the end.</div>
+          </div>
+          <div class="op">
+            <label for="skip" class="ptitle">Skipping:</label>
+            <select id="skip">
+              <option value="none">Not allowed</option>
+              <option value="neg">Allowed, costs −1</option>
+              <option value="zero">Allowed, scores 0</option>
+            </select>
+            <div class="desc flush">Candidate reports disagree on whether the real test lets you skip, so pick the version you want to practise.</div>
+          </div>
+        </div>
+      </div>
       <div class="row">
         <button type="submit">Start</button>
         <button type="button" class="secondary" id="open-history">History</button>
@@ -219,6 +274,7 @@
   <section id="end" hidden>
     <div class="final">Score: <span id="final"></span></div>
     <p class="sub" id="end-sub"></p>
+    <p class="sub" id="end-note" hidden></p>
     <div class="row">
       <button id="again">Try again</button>
       <button class="secondary" id="change">Change settings</button>
@@ -229,6 +285,14 @@
       <thead><tr><th>Date</th><th class="num">Score</th></tr></thead>
       <tbody id="history"></tbody>
     </table>
+    <div class="review" id="review" hidden>
+      <h2>Review</h2>
+      <table>
+        <thead><tr><th>Question</th><th class="num">Yours</th><th class="num">Correct</th></tr></thead>
+        <tbody id="review-body"></tbody>
+      </table>
+      <p class="empty" id="review-empty" hidden>No mistakes. Nice.</p>
+    </div>
   </section>
 
   <!-- ===== History ===== -->
@@ -253,12 +317,13 @@
 <!-- ===== Game (full-screen overlay) ===== -->
 <section id="game" hidden>
   <div class="bar">
-    <span>Seconds left: <b id="timer">120</b></span>
+    <span><span id="timer-label">Seconds left:</span> <b id="timer">120</b></span>
     <button class="secondary quit-btn" id="quit" type="button">Quit</button>
-    <span>Score: <b id="score">0</b></span>
+    <span><span id="score-label">Score:</span> <b id="score">0</b></span>
   </div>
   <div class="stage">
-    <div class="problem">
+    <div class="pq" id="pq" hidden></div>
+    <div class="problem" id="classic-problem">
       <span id="problem"></span>
       <span>=</span>
       <span id="answer" class="focus" role="textbox" aria-label="Answer" aria-live="off"></span>
@@ -280,6 +345,13 @@
     <button type="button" data-k="del" class="fn" aria-label="Delete">⌫</button>
   </div>
   <button type="button" class="submit-bar" id="submit-bar" hidden>Submit</button>
+  <div class="choices" id="choices" hidden>
+    <button type="button" data-i="0"><span class="k">1</span><span class="v"></span></button>
+    <button type="button" data-i="1"><span class="k">2</span><span class="v"></span></button>
+    <button type="button" data-i="2"><span class="k">3</span><span class="v"></span></button>
+    <button type="button" data-i="3"><span class="k">4</span><span class="v"></span></button>
+  </div>
+  <button type="button" class="secondary skip-bar" id="skip-bar" hidden>Skip</button>
 </section>
 
 <script>
@@ -292,6 +364,8 @@
     mulL1: 2, mulH1: 12, mulL2: 2, mulH2: 100,
     duration: 120,
     accuracy: false,
+    mode: 'classic',
+    skip: 'none',
   };
   const OPS = ['add', 'sub', 'mul', 'div'];
   const RANGES = ['addL1', 'addH1', 'addL2', 'addH2', 'mulL1', 'mulH1', 'mulL2', 'mulH2'];
@@ -299,6 +373,7 @@
   const KEY_SETTINGS = 'arith.settings.v1';
   const KEY_HISTORY = 'arith.history.v1';
   const MAX_LEN = 7;
+  const P_QUESTIONS = 80, P_SECONDS = 480;
 
   // ---------- storage (fails soft) ----------
   const load = (k, fallback) => {
@@ -315,8 +390,13 @@
     RANGES.forEach(r => { $(r).value = s[r] ?? DEFAULTS[r]; });
     $('duration').value = DURATIONS.includes(String(s.duration)) ? String(s.duration) : String(DEFAULTS.duration);
     $('accuracy').checked = !!s.accuracy;
+    const mode = s.mode === 'practical' ? 'practical' : 'classic';
+    document.querySelector(`input[name=mode][value=${mode}]`).checked = true;
+    $('skip').value = ['none', 'neg', 'zero'].includes(s.skip) ? s.skip : 'none';
     refreshDisabled();
   }
+
+  const currentMode = () => document.querySelector('input[name=mode]:checked')?.value || 'classic';
 
   function rawForm() {
     const r = {};
@@ -324,16 +404,22 @@
     RANGES.forEach(k => { r[k] = $(k).value; });
     r.duration = $('duration').value;
     r.accuracy = $('accuracy').checked;
+    r.mode = currentMode();
+    r.skip = $('skip').value;
     return r;
   }
   const persistForm = () => save(KEY_SETTINGS, rawForm());
 
   function refreshDisabled() {
     OPS.forEach(op => $('op-' + op).classList.toggle('off', !$(op).checked));
+    $('classic-settings').hidden = currentMode() !== 'classic';
+    $('practical-settings').hidden = currentMode() !== 'practical';
   }
 
   function readForm() {
-    const s = {};
+    if (currentMode() === 'practical')
+      return { s: { mode: 'practical', skip: $('skip').value, duration: P_SECONDS } };
+    const s = { mode: 'classic' };
     OPS.forEach(op => { s[op] = $(op).checked; });
     for (const r of RANGES) {
       const raw = $(r).value.trim();
@@ -356,7 +442,7 @@
 
   // A signature so scores are only compared against identical settings.
   // Accuracy mode gets its own suffix so its scores are kept separate.
-  const signature = s =>
+  const signature = s => s.mode === 'practical' ? `practical|${s.skip}` :
     OPS.filter(op => s[op]).join('+') + '|' +
     ((s.add || s.sub) ? `a${s.addL1}-${s.addH1},${s.addL2}-${s.addH2}` : '') + '|' +
     ((s.mul || s.div) ? `m${s.mulL1}-${s.mulH1},${s.mulL2}-${s.mulH2}` : '') + '|' +
@@ -364,6 +450,10 @@
 
   // Human-readable label for a signature, e.g. "+ − × ÷ · 120s · Accuracy".
   function describe(sig) {
+    if (sig.startsWith('practical|')) {
+      const skip = sig.split('|')[1];
+      return 'Practical 80 in 8' + (skip === 'neg' ? ' · skip −1' : skip === 'zero' ? ' · skip 0' : '');
+    }
     const [ops, a, m, dur, mode] = sig.split('|');
     const sym = { add: '+', sub: '−', mul: '×', div: '÷' };
     const parts = [ops.split('+').map(o => sym[o]).join(' ')];
@@ -402,9 +492,160 @@
     }
   }
 
+  // ---------- practical mode: exact fractions ----------
+  const gcd = (a, b) => { a = Math.abs(a); b = Math.abs(b); while (b) [a, b] = [b, a % b]; return a || 1; };
+  const F = (n, d = 1) => { if (d < 0) { n = -n; d = -d; } const g = gcd(n, d); return { n: n / g, d: d / g }; };
+  const ARITH = {
+    '+': (x, y) => F(x.n * y.d + y.n * x.d, x.d * y.d),
+    '−': (x, y) => F(x.n * y.d - y.n * x.d, x.d * y.d),
+    '×': (x, y) => F(x.n * y.n, x.d * y.d),
+    '÷': (x, y) => F(x.n * y.d, x.d * y.n),
+  };
+  ARITH.of = ARITH['×'];
+  const dec = (m, places) => F(m, 10 ** places);          // dec(35, 2) = 0.35
+  const ri = (lo, hi) => lo + Math.floor(Math.random() * (hi - lo + 1));
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  const shuffle = arr => { for (let i = arr.length - 1; i > 0; i--) { const j = ri(0, i); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
+
+  // Decimal places needed to write f exactly, or Infinity if it doesn't terminate.
+  function places(f) {
+    for (let p = 0; p <= 6; p++) if ((10 ** p) % f.d === 0) return p;
+    return Infinity;
+  }
+  function fmtDec(f) {
+    const p = places(f);
+    let str = String(Math.abs(f.n) * (10 ** p / f.d));
+    if (p > 0) { str = str.padStart(p + 1, '0'); str = str.slice(0, -p) + '.' + str.slice(-p); }
+    const [i, fr] = str.split('.');
+    return (f.n < 0 ? '−' : '') + i.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (fr ? '.' + fr : '');
+  }
+  const fmtFrac = f => f.d === 1 ? fmtDec(f) : `${f.n}/${f.d}`;
+  const fmtPct = f => fmtDec(ARITH['×'](f, F(100))) + '%';
+  const FMT = { dec: fmtDec, frac: fmtFrac, pct: fmtPct };
+
+  // Each generator returns { terms: [x, y], op, res, hide } where each value is { v, fmt }
+  // and `hide` lists which terms may be replaced by "?" for a missing-operand question.
+  const val = (v, fmt) => ({ v, fmt });
+  function bin(a, op, b, fmt, resFmt = fmt) {
+    return { terms: [val(a, fmt), val(b, fmt)], op, res: val(ARITH[op](a, b), resFmt), hide: [0, 1] };
+  }
+  const I = n => F(n);
+  const GENERATORS = [
+    // Whole numbers
+    [3, () => bin(I(ri(100, 999)), '+', I(ri(12, 999)), 'dec')],
+    [3, () => { const a = ri(200, 1999); return bin(I(a), '−', I(ri(12, a - 50)), 'dec'); }],
+    [3, () => { const [a, b] = pick([[ri(12, 99), ri(3, 9)], [ri(11, 99), ri(11, 49)], [ri(101, 999), ri(2, 9)]]);
+                return bin(I(a), '×', I(b), 'dec'); }],
+    [3, () => { const b = ri(3, 25), q = ri(12, 199); return bin(I(b * q), '÷', I(b), 'dec'); }],
+    // Decimals
+    [2, () => bin(dec(ri(1000, 99999), 2), '+', dec(ri(10, 9999), pick([1, 2])), 'dec')],
+    [2, () => pick([
+      () => bin(I(1000), '−', dec(ri(10001, 99999), 2), 'dec'),
+      () => { const a = ri(5000, 99999); return bin(dec(a, 2), '−', dec(ri(100, a - 100), 2), 'dec'); },
+    ])()],
+    [3, () => {
+      let m = ri(2, 99); if (m % 10 === 0) m += ri(1, 9);
+      const n = Math.random() < 0.5 ? ri(2, 99) : ri(100, 999);
+      let i, j;
+      do { i = ri(0, 2); j = ri(0, n >= 100 ? 1 : 2); } while (i + j < 1 || i + j > 3);
+      return bin(dec(m, i), '×', dec(n, j), 'dec');
+    }],
+    [3, () => {
+      const divisor = pick([dec(ri(2, 9), 1), dec(pick([25, 75, 125]), pick([2, 3])), I(ri(2, 12)), dec(ri(11, 25), 1)]);
+      const q = Math.random() < 0.5 ? I(ri(4, 99)) : dec(ri(11, 999), 1);
+      return bin(ARITH['×'](q, divisor), '÷', divisor, 'dec');
+    }],
+    // Fraction of a number: 7/8 of 312
+    [2, () => {
+      const d = pick([2, 3, 4, 5, 6, 8, 9, 12, 16, 20, 25]);
+      let n; do { n = ri(1, d - 1); } while (gcd(n, d) !== 1);
+      const k = ri(3, Math.max(4, Math.floor(999 / d)));
+      return { terms: [val(F(n, d), 'frac'), val(I(d * k), 'dec')], op: 'of', res: val(I(n * k), 'dec'), hide: [0, 1] };
+    }],
+    // Percentages: 15% of 240
+    [2, () => {
+      const p = pick([5, 10, 12.5, 15, 20, 25, 30, 35, 40, 45, 60, 65, 75, 80, 120, 150, 2.5, 7.5]);
+      const pct = F(p * 10, 1000);
+      const base = I(ri(2, 60) * pick([4, 8, 20, 40]));
+      return { terms: [val(pct, 'pct'), val(base, 'dec')], op: 'of', res: val(ARITH['×'](pct, base), 'dec'), hide: [0, 1] };
+    }],
+    // Fraction arithmetic: 3/4 + 5/6
+    [3, () => {
+      const frac = () => { const d = ri(2, 12); let n; do { n = ri(1, d * 2 - 1); } while (gcd(n, d) !== 1); return F(n, d); };
+      let a = frac(), b = frac();
+      const op = pick(['+', '−', '×', '÷']);
+      if (op === '−' && a.n * b.d <= b.n * a.d) [a, b] = [b, a];
+      return bin(a, op, b, 'frac');
+    }],
+  ];
+  const TOTAL_W = GENERATORS.reduce((t, [w]) => t + w, 0);
+
+  function wellFormed(q) {
+    const r = q.res.v;
+    if (r.n <= 0) return false;
+    if (q.res.fmt === 'dec' && places(r) > 3) return false;
+    if (q.terms.some(t => t.fmt === 'dec' && places(t.v) > 3)) return false;
+    if (q.res.fmt === 'frac' && (r.d > 144 || Math.abs(r.n) > 999)) return false;
+    return FMT[q.res.fmt](r).length <= 10;
+  }
+
+  // Plausible wrong answers: one-digit slips, a misplaced decimal point, transposed digits.
+  function decDistractors(x, fmt) {
+    const p = Math.min(places(x), 4);
+    const N = Math.round(x.n * (10 ** p / x.d));
+    const L = String(N).length;
+    const out = [];
+    for (let t = 0; t < 40; t++) {
+      const k = L > 1 && Math.random() < 0.7 ? ri(1, L - 1) : 0;
+      const m = (Math.random() < 0.5 ? -1 : 1) * pick([1, 1, 2, 3]) * 10 ** k;
+      if (N + m > 0) out.push(F(N + m, 10 ** p));
+    }
+    if (Math.random() < 0.5) out.unshift(pick([ARITH['×'](x, F(10)), ARITH['÷'](x, F(10))]));
+    if (L >= 2) {
+      const s = String(N), sw = s.slice(0, -2) + s.slice(-1) + s.slice(-2, -1);
+      if (sw[0] !== '0') out.splice(1, 0, F(Number(sw), 10 ** p));
+    }
+    return out.filter(f => places(f) <= 4 && (fmt !== 'pct' || places(f) <= 5));
+  }
+  function fracDistractors(x) {
+    const { n, d } = x;
+    return shuffle([F(n + 1, d), F(n - 1, d), F(n, d + 1), F(n, d - 1), F(d, n), F(n + 2, d), F(n * 2, d), F(n, d * 2)])
+      .filter(f => f.n > 0 && f.d > 0);
+  }
+
+  function makePractical() {
+    for (;;) {
+      let r = Math.random() * TOTAL_W, gen;
+      for (const [w, g] of GENERATORS) { if ((r -= w) < 0) { gen = g; break; } }
+      const q = gen();
+      if (!wellFormed(q)) continue;
+
+      // About 30% of questions hide an operand instead of the result.
+      const hideIdx = Math.random() < 0.3 ? pick(q.hide) : -1;
+      const target = hideIdx < 0 ? q.res : q.terms[hideIdx];
+      if (target.fmt === 'dec' && places(target.v) > 3) continue;
+      const show = (x, i) => i === hideIdx ? '?' : FMT[x.fmt](x.v);
+      const text = `${show(q.terms[0], 0)} ${q.op} ${show(q.terms[1], 1)} = ${hideIdx < 0 ? '?' : FMT[q.res.fmt](q.res.v)}`;
+
+      const fmt = FMT[target.fmt];
+      const correct = fmt(target.v);
+      const opts = [correct];
+      const pool = target.fmt === 'frac' ? fracDistractors(target.v) : decDistractors(target.v, target.fmt);
+      for (const f of pool) {
+        const str = fmt(f);
+        if (f.n > 0 && !opts.includes(str)) opts.push(str);
+        if (opts.length === 4) break;
+      }
+      if (opts.length < 4) continue;
+      shuffle(opts);
+      return { text, options: opts, correct: opts.indexOf(correct) };
+    }
+  }
+
   // ---------- game ----------
   let settings = null, problem = null, entry = '', score = 0, correct = 0, wrong = 0;
   let wrongShown = false, endAt = 0, tickId = 0, running = false;
+  let pq = null, pIndex = 0, skipped = 0, pLog = [], lockUntil = 0, startedAt = 0;
 
   function show(id) {
     $('page').hidden = id === 'game';
@@ -460,11 +701,58 @@
     $('answer').textContent = '';
   }
 
+  const fmtClock = secs => `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+
+  function nextPractical() {
+    if (pIndex >= P_QUESTIONS) return finish();
+    pq = makePractical();
+    $('pq').textContent = pq.text;
+    $('choices').querySelectorAll('button').forEach((b, i) => { b.querySelector('.v').textContent = pq.options[i]; });
+    $('score').textContent = `${pIndex + 1}/${P_QUESTIONS}`;
+  }
+
+  // i = chosen option index, or -1 for a skip.
+  function choose(i) {
+    if (!running || settings.mode !== 'practical') return;
+    const now = performance.now();
+    if (now < lockUntil) return;          // swallow accidental double taps
+    lockUntil = now + 150;
+    const ok = i === pq.correct;
+    if (i < 0) { skipped++; if (settings.skip === 'neg') score--; }
+    else if (ok) { correct++; score++; }
+    else { wrong++; score--; }
+    pLog.push({ text: pq.text, yours: i < 0 ? 'skipped' : pq.options[i], answer: pq.options[pq.correct], ok });
+    pIndex++;
+    nextPractical();
+  }
+
   function start() {
     score = 0; correct = 0; wrong = 0; problem = null; running = true;
-    $('score').textContent = '0';
-    $('timer').textContent = settings.duration;
+    const practical = settings.mode === 'practical';
+    $('timer').textContent = practical ? fmtClock(settings.duration) : settings.duration;
     $('timer').classList.remove('low');
+    $('timer-label').textContent = practical ? 'Time left:' : 'Seconds left:';
+    $('score-label').textContent = practical ? 'Question:' : 'Score:';
+    $('pq').hidden = !practical;
+    $('classic-problem').hidden = practical;
+    $('keypad').hidden = practical;
+    $('choices').hidden = !practical;
+    $('skip-bar').hidden = !practical || settings.skip === 'none';
+    if (practical) {
+      pIndex = 0; skipped = 0; pLog = []; lockUntil = 0;
+      $('desk-hint').innerHTML = 'Press <kbd>1</kbd>–<kbd>4</kbd> to answer' +
+        (settings.skip === 'none' ? '' : ' · <kbd>S</kbd> to skip') + ' · <kbd>Esc</kbd> to quit';
+      $('submit-bar').hidden = true;
+      if (document.activeElement) document.activeElement.blur();
+      show('game');
+      nextPractical();
+      startedAt = performance.now();
+      endAt = startedAt + settings.duration * 1000;
+      clearInterval(tickId);
+      tickId = setInterval(tick, 50);
+      return;
+    }
+    $('score').textContent = '0';
     $('submit-bar').hidden = !settings.accuracy;
     $('desk-hint').innerHTML = settings.accuracy
       ? 'Type your answer · <kbd>Enter</kbd> to submit · <kbd>Esc</kbd> to quit'
@@ -481,8 +769,9 @@
     const left = endAt - performance.now();
     if (left <= 0) return finish();
     const secs = Math.ceil(left / 1000);
-    $('timer').textContent = secs;
-    $('timer').classList.toggle('low', secs <= 10);
+    const practical = settings.mode === 'practical';
+    $('timer').textContent = practical ? fmtClock(secs) : secs;
+    $('timer').classList.toggle('low', secs <= (practical ? 30 : 10));
   }
 
   function stop() {
@@ -551,7 +840,11 @@
     const history = load(KEY_HISTORY, []);
     const prior = history.filter(h => h.sig === sig);
     const prevBest = prior.reduce((m, h) => Math.max(m, h.score), -Infinity);
-    const entryRec = settings.accuracy
+    const practical = settings.mode === 'practical';
+    const used = Math.min(settings.duration, Math.round((performance.now() - startedAt) / 1000));
+    const entryRec = practical
+      ? { sig, score, t: now, acc: true, c: correct, w: wrong, s: skipped, used }
+      : settings.accuracy
       ? { sig, score, t: now, acc: true, c: correct, w: wrong }
       : { sig, score, t: now };
     history.push(entryRec);
@@ -559,7 +852,11 @@
 
     const mine = [...prior, entryRec];
     $('final').textContent = score;
-    $('end-sub').textContent = settings.accuracy
+    $('end-sub').textContent = practical
+      ? `${correct} correct · ${wrong} wrong` + (settings.skip === 'none' ? '' : ` · ${skipped} skipped`) +
+        ` · ${P_QUESTIONS - pIndex} unanswered · ` +
+        (pIndex >= P_QUESTIONS ? `finished in ${fmtClock(used)}.` : 'time ran out.')
+      : settings.accuracy
       ? `${correct} correct · ${wrong} wrong · ${pct(correct, wrong)}% accuracy over ${settings.duration}s.`
       : `${(score / settings.duration * 60).toFixed(1)} problems per minute over ${settings.duration}s.`;
     if (prior.length && score > prevBest) {
@@ -567,6 +864,24 @@
       pb.className = 'pb';
       pb.textContent = `  New best! (previous ${prevBest})`;
       $('end-sub').append(pb);
+    }
+
+    $('end-note').hidden = !practical;
+    $('review').hidden = !practical;
+    if (practical) {
+      const v = document.createElement('span');
+      v.className = 'verdict ' + (score >= 55 ? 'good' : 'bad');
+      v.textContent = score >= 70 ? 'Competitive range. ' : score >= 55 ? 'Above the reported pass line. ' : 'Below the reported pass line. ';
+      $('end-note').replaceChildren(v, 'Candidates report a pass line of about 55 net, with 70+ seen as competitive. Optiver has not published an official cutoff.');
+      const misses = pLog.filter(l => !l.ok);
+      $('review-empty').hidden = misses.length > 0;
+      $('review-body').replaceChildren(...misses.map(l => {
+        const tr = document.createElement('tr');
+        [[l.text, 'q'], [l.yours, 'num yours'], [l.answer, 'num']].forEach(([t, c]) => {
+          const td = document.createElement('td'); td.className = c; td.textContent = t; tr.append(td);
+        });
+        return tr;
+      }));
     }
 
     renderStats($('stats'), mine);
@@ -626,12 +941,24 @@
     $('keypad').addEventListener(t, unpress);
     $('submit-bar').addEventListener(t, unpress);
   });
+  $('choices').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-i]');
+    if (btn) choose(Number(btn.dataset.i));
+  });
+  $('skip-bar').addEventListener('click', () => { if (settings.skip !== 'none') choose(-1); });
   // Stop iOS long-press magnifier / callout on the game screen.
   $('game').addEventListener('contextmenu', e => e.preventDefault());
 
   // Physical keyboard (Mac, iPad keyboard, Bluetooth keyboard).
   document.addEventListener('keydown', e => {
     if (!running || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (settings.mode === 'practical') {
+      if (/^[1-4]$/.test(e.key)) choose(Number(e.key) - 1);
+      else if ((e.key === 's' || e.key === 'S') && settings.skip !== 'none') choose(-1);
+      else if (e.key === 'Escape') quit();
+      else return;
+      return e.preventDefault();
+    }
     if (/^[0-9]$/.test(e.key)) press(e.key);
     else if (e.key === '-') press('-');
     else if (e.key === 'Backspace') press('del');
